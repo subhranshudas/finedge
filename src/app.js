@@ -1,13 +1,19 @@
 const express = require('express');
 const loggerMiddleware = require('./middlewares/logger.middleware');
 const errorMiddleware = require('./middlewares/error.middleware');
+const userRoute = require('./routes/user.route');
 
 const app = express();
 
 app.use(express.json());
 app.use(loggerMiddleware);
 
-// TODO: mount routes here
+// Health check
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
+
+app.use('/api/v1/users', userRoute);
 
 
 // 404 fallback

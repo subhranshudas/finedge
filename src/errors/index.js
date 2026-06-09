@@ -17,6 +17,10 @@ class BadRequestError extends AppError {
     constructor(message) { super(message, 400); }
 }
 
+class UnauthorizedError extends AppError {
+    constructor(message) { super(message, 401); }
+}
+
 class NotFoundError extends AppError {
     constructor(message) { super(message, 404); }
 }
@@ -32,4 +36,4 @@ class ValidationError extends AppError {
     }
 }
 
-module.exports = { AppError, BadRequestError, NotFoundError, ConflictError, ValidationError };
+module.exports = { AppError, BadRequestError, UnauthorizedError, NotFoundError, ConflictError, ValidationError };
