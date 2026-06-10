@@ -13,7 +13,6 @@ const registerUser = async ({ username, email, password, currency }) => {
     }
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
     const user = await User.create({ username, email, passwordHash, currency });
 
     return { id: user._id, username: user.username, email: user.email, currency: user.currency };

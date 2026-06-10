@@ -2,6 +2,7 @@ const express = require('express');
 const loggerMiddleware = require('./middlewares/logger.middleware');
 const errorMiddleware = require('./middlewares/error.middleware');
 const userRoute = require('./routes/user.route');
+const transactionRoute = require('./routes/transaction.route');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v1/users', userRoute);
+app.use('/api/v1/transactions', transactionRoute);
 
 
 // 404 fallback
