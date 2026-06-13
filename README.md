@@ -1,6 +1,7 @@
 # FinEdge API
 
 A RESTful Personal Finance & Expense Tracker API built with Node.js and Express.
+[check requirements](./project-requirements.md)
 
 ---
 
@@ -21,6 +22,8 @@ FinEdge allows users to register, log income and expense transactions, and view 
 | Authentication | JWT (jsonwebtoken) |
 | Password Hashing | bcryptjs |
 | Config | dotenv + envalid |
+| Rate Limiting | express-rate-limit |
+| CORS | cors |
 | Testing | Jest + Supertest |
 
 ---
@@ -30,6 +33,13 @@ FinEdge allows users to register, log income and expense transactions, and view 
 **Prerequisites**
 - Node.js v18+
 - MongoDB instance (local or Atlas)
+
+**MongoDB setup**
+
+You need a running MongoDB instance before starting the app. Two options:
+
+- **MongoDB Atlas (recommended)** — create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas), then copy the connection string into `MONGO_URI` in your `.env`
+- **Local MongoDB** — install MongoDB Community Edition and start it with `mongod`. Use `MONGO_URI=mongodb://localhost:27017/finedge`
 
 **Install dependencies**
 ```bash
@@ -51,9 +61,13 @@ cp .env.example .env
 |---|---|---|
 | `PORT` | Port the server listens on | `3000` |
 | `NODE_ENV` | Environment (`development`, `test`, `production`) | `development` |
-| `MONGO_URI` | MongoDB connection string | — |
-| `JWT_SECRET` | Secret key for signing JWT tokens | — |
+| `MONGO_URI` | MongoDB connection string — required, no default | — |
+| `JWT_SECRET` | Secret key for signing JWT tokens — required, no default | — |
 | `JWT_EXPIRY` | JWT token expiry duration | `1h` |
+| `SUMMARY_CACHE_TTL_MS` | How long (ms) the summary cache entry lives before expiry | `60000` |
+| `RATE_LIMIT_WINDOW_MS` | Rate limit time window in milliseconds | `120000` |
+| `RATE_LIMIT_MAX` | Max requests per IP per window | `100` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | `http://localhost:3000,http://localhost:5173` |
 
 ---
 
@@ -98,7 +112,10 @@ npm run test:coverage
 | GET | `/api/v1/transactions/:id` | Yes | Get single transaction |
 | PATCH | `/api/v1/transactions/:id` | Yes | Update transaction |
 | DELETE | `/api/v1/transactions/:id` | Yes | Delete transaction |
-| GET | `/api/v1/summary` | Yes | Income/expense summary |
+| GET | `/api/v1/summary` | Yes | Income/expense summary (cached, filterable) |
+| GET | `/api/v1/summary?category=food` | Yes | Summary filtered by category |
+| GET | `/api/v1/summary?startDate=2026-01-01&endDate=2026-06-01` | Yes | Summary filtered by date range |
+| GET | `/api/v1/summary/trends` | Yes | Monthly income/expense breakdown |
 
 ---
 
@@ -111,13 +128,26 @@ Strict separation of concerns: `routes → controllers → services → models`.
 All errors flow through a central `error.middleware.js` via `next(err)`. Custom `AppError` subclasses (`BadRequestError`, `NotFoundError`, `ConflictError`, `ValidationError`, `UnauthorizedError`) carry their own status codes. Controllers stay clean — they only call `next(err)` in the catch block.
 
 ### Zod Validation at the Boundary
-Request bodies are validated via Zod schemas before reaching controllers. Invalid input is rejected early with a 422 and field-level error details. `req.body` is replaced with Zod's parsed (and sanitized) output — extra fields are stripped automatically.
+Request bodies and query params are validated via Zod schemas before reaching controllers. Invalid input is rejected early with a 422 and field-level error details. `req.body` / `req.query` are replaced with Zod's parsed output — extra fields are stripped automatically.
 
 ### Currency Stored in Subunits
 Transaction amounts are stored in subunits (e.g. paisa for INR, cents for USD) as integers to avoid floating-point arithmetic errors. Conversion between major units and subunits is handled in `src/utils/currency.js`. The client always sends and receives amounts in major units (e.g. `100.50`).
 
 ### Currency on Transaction Document
 A user's currency preference lives on their profile. On transaction creation, the user's currency is fetched from the DB (one extra call) and stored on the transaction document. All subsequent operations (GET, PATCH, DELETE) use the transaction's own currency — no further DB calls needed. In production, this single lookup would be served from a Redis cache.
+
+### Summary Caching
+`GET /summary` with no filters is cached in-memory per user with a configurable TTL (`SUMMARY_CACHE_TTL_MS`). Filtered requests (`?category`, `?startDate`, `?endDate`) always bypass the cache. The cache is invalidated on any transaction mutation (create, update, delete) to prevent stale results — TTL acts as a safety net, not the primary invalidation mechanism.
+
+The cache is implemented as a factory (`createCache`) that creates isolated `Map` instances per domain. Each cache instance has its own TTL baked in at creation time — callers never pass TTL per entry, keeping the cache policy centralised.
+
+### CORS
+CORS is configured to allow only explicitly whitelisted origins (`CORS_ALLOWED_ORIGINS`). This is a browser-only enforcement — Postman, curl, and Supertest are unaffected.
+
+To observe CORS in action: serve a static HTML file with a `fetch()` call to this API from a different port (e.g. `npx serve -p 4444`). A request from `http://localhost:4444` will be blocked by the browser unless that origin is in `CORS_ALLOWED_ORIGINS`.
+
+### Rate Limiting
+All routes are rate-limited to `RATE_LIMIT_MAX` requests per `RATE_LIMIT_WINDOW_MS` per IP. Returns `429 Too Many Requests` when exceeded. Rate limiting is disabled in the `test` environment to prevent test failures from request volume.
 
 ### DB Error Handling Tradeoff
 Mongoose-specific errors (`CastError`, `ValidationError`, `11000`) are not translated at the service layer. In edge cases they surface as 500s and are logged server-side only. The correct production pattern would be a repository layer that catches and translates DB errors to domain errors, keeping services DB-agnostic. This is out of scope for the assignment.
@@ -142,7 +172,6 @@ Transactions carry an explicit `transactionDate` field (set by the client) separ
 ### Health
 
 ```bash
-# Health check
 curl http://localhost:3000/health
 ```
 
@@ -196,4 +225,24 @@ curl -X DELETE http://localhost:3000/api/v1/transactions/:id \
 
 ### Summary
 
-- Todo
+```bash
+# All-time summary (cached per user, 60s TTL)
+curl http://localhost:3000/api/v1/summary \
+  -H "Authorization: Bearer $TOKEN"
+
+# Filter by category
+curl "http://localhost:3000/api/v1/summary?category=food" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Filter by date range
+curl "http://localhost:3000/api/v1/summary?startDate=2026-01-01&endDate=2026-06-01" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Filter by category and date range
+curl "http://localhost:3000/api/v1/summary?category=food&startDate=2026-01-01&endDate=2026-06-01" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Monthly trends
+curl http://localhost:3000/api/v1/summary/trends \
+  -H "Authorization: Bearer $TOKEN"
+```

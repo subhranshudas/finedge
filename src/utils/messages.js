@@ -18,6 +18,12 @@ module.exports = {
     USER_CREATED: 'User registered successfully',
     USER_INVALID_CREDENTIALS: 'Invalid credentials',
 
+    // rate limiting
+    RATE_LIMIT_EXCEEDED: 'Too many requests, please try again later.',
+
+    // summary
+    SUMMARY_FETCHED: 'Summary fetched successfully',
+
     // transaction
     TRANSACTION_NOT_FOUND: 'Transaction not found',
     TRANSACTION_CREATED: 'Transaction created successfully',
