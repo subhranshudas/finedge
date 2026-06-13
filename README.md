@@ -85,17 +85,15 @@ npm start
 
 **Run tests**
 ```bash
+# Coverage report
+npm run test:coverage
+
 # Unit tests
 npm run test:unit
 
 # Integration tests
 npm run test:integration
 
-# All tests
-npm test
-
-# Coverage report
-npm run test:coverage
 ```
 
 ---
@@ -116,6 +114,29 @@ npm run test:coverage
 | GET | `/api/v1/summary?category=food` | Yes | Summary filtered by category |
 | GET | `/api/v1/summary?startDate=2026-01-01&endDate=2026-06-01` | Yes | Summary filtered by date range |
 | GET | `/api/v1/summary/trends` | Yes | Monthly income/expense breakdown |
+
+---
+
+## Bonus Sections
+
+### A. Analytics & Reporting
+- ✅ Calculate total income, expenses, and balance
+- ✅ Filter transactions by category/date
+- ✅ Show monthly trends
+
+### B. AI or Automation Feature
+  (did not get time!)
+- ❌ Suggest saving tips or budgets based on past spending
+- ❌ Auto-categorize expenses using keyword matching
+- ❌ Real-time updates on new transactions
+
+### C. Data Persistence
+- ✅ Store and retrieve data using MongoDB
+
+### D. Advanced Middleware
+- ✅ Rate limiter for requests
+- ✅ CORS and request logging
+- ✅ In-memory cache service with TTL expiry on `/summary`
 
 ---
 
@@ -162,6 +183,8 @@ Transactions carry an explicit `transactionDate` field (set by the client) separ
 
 ## API Reference
 
+> Use the curl commands below for manual functional testing.
+
 > Set your token after login:
 > ```bash
 > TOKEN="your_jwt_token_here"
@@ -172,7 +195,9 @@ Transactions carry an explicit `transactionDate` field (set by the client) separ
 ### Health
 
 ```bash
-curl http://localhost:3000/health
+# Health check
+curl -s -i http://localhost:3000/health
+# 200 OK — { "status": "ok" }
 ```
 
 ---
@@ -180,15 +205,65 @@ curl http://localhost:3000/health
 ### Users
 
 ```bash
-# Register
-curl -X POST http://localhost:3000/api/v1/users \
+# Register — valid (201)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
   -H "Content-Type: application/json" \
-  -d '{"username": "testuser", "email": "test@example.com", "password": "123456"}'
+  -d '{"username": "alice", "email": "alice@example.com", "password": "password123", "currency": "INR"}'
 
-# Login
-curl -X POST http://localhost:3000/api/v1/users/login \
+# Register — missing required field (422)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
   -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "123456"}'
+  -d '{"email": "alice@example.com", "password": "password123"}'
+
+# Register — invalid email (422)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "bob", "email": "not-an-email", "password": "password123"}'
+
+# Register — password too short (422)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "bob", "email": "bob@example.com", "password": "123"}'
+
+# Register — duplicate email (409)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice2", "email": "alice@example.com", "password": "password123"}'
+
+# Register — duplicate username (409)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "email": "different@example.com", "password": "password123"}'
+
+# Register — no currency provided, defaults to INR (201)
+curl -s -i -X POST http://localhost:3000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "bob", "email": "bob@example.com", "password": "password123"}'
+
+# Login — valid credentials (200)
+curl -s -i -X POST http://localhost:3000/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "password123"}'
+
+# Login — missing email (422)
+curl -s -i -X POST http://localhost:3000/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"password": "password123"}'
+
+# Login — missing password (422)
+curl -s -i -X POST http://localhost:3000/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com"}'
+
+# Login — user not found (404)
+curl -s -i -X POST http://localhost:3000/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "unknown@example.com", "password": "password123"}'
+
+# Login — wrong password (400)
+curl -s -i -X POST http://localhost:3000/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "wrongpassword"}'
 ```
 
 ---
@@ -196,28 +271,197 @@ curl -X POST http://localhost:3000/api/v1/users/login \
 ### Transactions
 
 ```bash
-# Create transaction
-curl -X POST http://localhost:3000/api/v1/transactions \
+# Create — valid expense (201)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"type": "expense", "category": "food", "amount": 100.50, "transactionDate": "2026-06-09"}'
+  -d '{"type": "expense", "category": "food", "amount": 100.50, "transactionDate": "2026-06-01"}'
 
-# Get all transactions
-curl http://localhost:3000/api/v1/transactions \
-  -H "Authorization: Bearer $TOKEN"
-
-# Get single transaction
-curl http://localhost:3000/api/v1/transactions/:id \
-  -H "Authorization: Bearer $TOKEN"
-
-# Update transaction
-curl -X PATCH http://localhost:3000/api/v1/transactions/:id \
+# Create — valid income (201)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"amount": 200.75}'
+  -d '{"type": "income", "category": "salary", "amount": 5000, "transactionDate": "2026-06-01"}'
 
-# Delete transaction
-curl -X DELETE http://localhost:3000/api/v1/transactions/:id \
+# Create — with optional description (201)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "category": "food", "amount": 50, "transactionDate": "2026-06-01", "description": "lunch"}'
+
+# Create — missing Authorization header (401)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"type": "expense", "category": "food", "amount": 100.50, "transactionDate": "2026-06-01"}'
+
+# Create — invalid token (401)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer badtoken" \
+  -d '{"type": "expense", "category": "food", "amount": 100.50, "transactionDate": "2026-06-01"}'
+
+# Create — missing type (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"category": "food", "amount": 100.50, "transactionDate": "2026-06-01"}'
+
+# Create — invalid type value (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "transfer", "category": "food", "amount": 100.50, "transactionDate": "2026-06-01"}'
+
+# Create — missing amount (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "category": "food", "transactionDate": "2026-06-01"}'
+
+# Create — zero amount (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "category": "food", "amount": 0, "transactionDate": "2026-06-01"}'
+
+# Create — negative amount (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "category": "food", "amount": -100, "transactionDate": "2026-06-01"}'
+
+# Create — missing transactionDate (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "category": "food", "amount": 100.50}'
+
+# Create — missing category (422)
+curl -s -i -X POST http://localhost:3000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "expense", "amount": 100.50, "transactionDate": "2026-06-01"}'
+
+# Get all — valid (200)
+curl -s -i http://localhost:3000/api/v1/transactions \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get all — missing Authorization header (401)
+curl -s -i http://localhost:3000/api/v1/transactions
+
+# Get all — invalid token (401)
+curl -s -i http://localhost:3000/api/v1/transactions \
+  -H "Authorization: Bearer badtoken"
+
+# Get all — cross-user isolation, returns empty array for another user (200)
+curl -s -i http://localhost:3000/api/v1/transactions \
+  -H "Authorization: Bearer $TOKEN_BOB"
+
+# Get by id — valid (200)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get by id — missing Authorization header (401)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6
+
+# Get by id — invalid token (401)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Authorization: Bearer badtoken"
+
+# Get by id — transaction not found (404)
+curl -s -i http://localhost:3000/api/v1/transactions/507f1f77bcf86cd799439011 \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get by id — invalid ObjectId format (400)
+curl -s -i http://localhost:3000/api/v1/transactions/not-a-valid-id \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get by id — cross-user isolation, returns 404 for another user's transaction (404)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Authorization: Bearer $TOKEN_BOB"
+
+# Update — valid, multiple fields (200)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"category": "travel", "amount": 200.75}'
+
+# Update — partial update, single field (200)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"description": "flight tickets"}'
+
+# Update — missing Authorization header (401)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -d '{"category": "travel"}'
+
+# Update — invalid token (401)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer badtoken" \
+  -d '{"category": "travel"}'
+
+# Update — transaction not found (404)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/507f1f77bcf86cd799439011 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"category": "travel"}'
+
+# Update — invalid ObjectId format (400)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/not-a-valid-id \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"category": "travel"}'
+
+# Update — zero amount (422)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"amount": 0}'
+
+# Update — invalid type value (422)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"type": "transfer"}'
+
+# Update — cross-user isolation, returns 404 for another user's transaction (404)
+curl -s -i -X PATCH http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN_BOB" \
+  -d '{"category": "travel"}'
+
+# Delete — valid (200)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/6a2d83d599af056473f47efc \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete — verify deleted transaction is gone (404)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d83d599af056473f47efc \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete — missing Authorization header (401)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6
+
+# Delete — invalid token (401)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/6a2d827199af056473f47ef6 \
+  -H "Authorization: Bearer badtoken"
+
+# Delete — transaction not found (404)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/507f1f77bcf86cd799439011 \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete — invalid ObjectId format (400)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/not-a-valid-id \
+  -H "Authorization: Bearer $TOKEN"
+
+# Delete — cross-user isolation, returns 404 for another user's transaction (404)
+curl -s -i -X DELETE http://localhost:3000/api/v1/transactions/6a2d829a99af056473f47ef9 \
+  -H "Authorization: Bearer $TOKEN_BOB"
+
+# Delete — verify cross-user isolated transaction is still intact (200)
+curl -s -i http://localhost:3000/api/v1/transactions/6a2d829a99af056473f47ef9 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -226,23 +470,57 @@ curl -X DELETE http://localhost:3000/api/v1/transactions/:id \
 ### Summary
 
 ```bash
-# All-time summary (cached per user, 60s TTL)
-curl http://localhost:3000/api/v1/summary \
+# All-time summary (200)
+curl -s -i http://localhost:3000/api/v1/summary \
   -H "Authorization: Bearer $TOKEN"
 
-# Filter by category
-curl "http://localhost:3000/api/v1/summary?category=food" \
+# Cache hit — second request returns fromCache: true (200)
+curl -s -i http://localhost:3000/api/v1/summary \
   -H "Authorization: Bearer $TOKEN"
 
-# Filter by date range
-curl "http://localhost:3000/api/v1/summary?startDate=2026-01-01&endDate=2026-06-01" \
+# Filter by category (200)
+curl -s -i "http://localhost:3000/api/v1/summary?category=food" \
   -H "Authorization: Bearer $TOKEN"
 
-# Filter by category and date range
-curl "http://localhost:3000/api/v1/summary?category=food&startDate=2026-01-01&endDate=2026-06-01" \
+# Filter by date range (200)
+curl -s -i "http://localhost:3000/api/v1/summary?startDate=2026-04-01&endDate=2026-04-30" \
   -H "Authorization: Bearer $TOKEN"
 
-# Monthly trends
-curl http://localhost:3000/api/v1/summary/trends \
+# Filter by category and date range combined (200)
+curl -s -i "http://localhost:3000/api/v1/summary?category=food&startDate=2026-04-01&endDate=2026-05-31" \
   -H "Authorization: Bearer $TOKEN"
+
+# Missing Authorization header (401)
+curl -s -i http://localhost:3000/api/v1/summary
+
+# Invalid token (401)
+curl -s -i http://localhost:3000/api/v1/summary \
+  -H "Authorization: Bearer badtoken"
+
+# Invalid startDate format (422)
+curl -s -i "http://localhost:3000/api/v1/summary?startDate=not-a-date" \
+  -H "Authorization: Bearer $TOKEN"
+
+# startDate after endDate (422)
+curl -s -i "http://localhost:3000/api/v1/summary?startDate=2026-06-01&endDate=2026-04-01" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Cross-user isolation, returns zeroed summary for another user (200)
+curl -s -i http://localhost:3000/api/v1/summary \
+  -H "Authorization: Bearer $TOKEN_BOB"
+
+# Trends — monthly breakdown sorted chronologically (200)
+curl -s -i http://localhost:3000/api/v1/summary/trends \
+  -H "Authorization: Bearer $TOKEN"
+
+# Trends — missing Authorization header (401)
+curl -s -i http://localhost:3000/api/v1/summary/trends
+
+# Trends — invalid token (401)
+curl -s -i http://localhost:3000/api/v1/summary/trends \
+  -H "Authorization: Bearer badtoken"
+
+# Trends — cross-user isolation, returns empty array for another user (200)
+curl -s -i http://localhost:3000/api/v1/summary/trends \
+  -H "Authorization: Bearer $TOKEN_BOB"
 ```

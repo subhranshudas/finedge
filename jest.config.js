@@ -8,7 +8,7 @@ module.exports = {
     coveragePathIgnorePatterns: [
         'tests/',
         'src/app.js',
-        'src/routes/',
         'src/config/',
+        'src/middlewares/logger.middleware.js',
     ],
 };
